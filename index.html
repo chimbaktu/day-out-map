@@ -60,6 +60,11 @@ select.chip{appearance:none;padding-right:13px}
 .trip{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;box-shadow:0 2px 10px rgba(0,0,0,.12);max-width:760px;width:100%;justify-self:center;display:grid;gap:8px;max-height:42vh;overflow-y:auto}
 .trip .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .trip label{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.gdata{display:grid;gap:4px;font-size:14px}
+.gdata:empty{display:none}
+.gdata .open{color:var(--accent);font-weight:600}.gdata .shut{color:var(--warn);font-weight:600}
+.gdata .star{color:#e0a106}
+.gdata small{color:var(--muted)}
 .destbox{position:relative;flex:1 1 180px;min-width:0}
 .destbox input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:7px 10px;width:100%}
 .sugg{position:absolute;left:0;right:0;top:100%;margin:4px 0 0;padding:4px;list-style:none;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.25);z-index:9;max-height:240px;overflow-y:auto}
@@ -226,16 +231,37 @@ function show(it){S.sel=it;const C=$("card");let h='<button type="button" class=
       (e.url?'<a class="btn" target="_blank" rel="noopener" href="'+esc(e.url)+'">Event page</a>':'')+'</div>';}
   else{const p=it.p;
     h+='<h2>'+esc(p.name)+'</h2><div class="meta"><span>'+esc(p.city)+', '+esc(p.state)+'</span>'+dist+'<span><b>'+TIER[p.cost_tier]+'</b></span><span>'+p.visit_hours[0]+'–'+p.visit_hours[1]+' hrs there</span></div>'+
-      '<p>'+esc(p.description)+'</p>'+(p.seasonal?'<div class="check">Seasonal: '+esc(p.seasonal)+'</div>':'')+
+      '<p>'+esc(p.description)+'</p><div class="gdata" id="gdata" data-id="'+esc(it.id)+'"></div>'+(p.seasonal?'<div class="check">Seasonal: '+esc(p.seasonal)+'</div>':'')+
       '<div class="tags">'+(p.mood_tags||[]).map(t=>'<span class="tag">'+esc(MOODS[t]||t)+'</span>').join("")+'</div>'+
       '<div class="actions">'+tripBtns+'<a class="btn" target="_blank" rel="noopener" href="'+dir+'">Directions</a>'+(p.source?'<a class="btn" target="_blank" rel="noopener" href="'+esc(p.source.url)+'">Read more on '+esc(p.source.name)+'</a>':'')+
       '<a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(p.name+", "+p.city+", "+p.state)+'">Hours &amp; reviews</a>'+
       '<a class="btn" target="_blank" rel="noopener" href="'+gcalLink(p.name,nextSat(),p.visit_hours[1]+2*it.dm/60,p.name+", "+p.city+", "+p.state,p.description)+'">Add to Google Calendar</a></div>';}
   h+='<a class="btn" style="justify-self:start" target="_blank" rel="noopener" href="'+APP_URL+'">Open Day Out Finder</a>';
-  C.innerHTML=h;C.hidden=false;C.scrollTop=0;$("cx").onclick=()=>{C.hidden=true;};
+  C.innerHTML=h;C.hidden=false;C.scrollTop=0;$("cx").onclick=()=>{C.hidden=true;};enrich(it);
   $("cStop").onclick=()=>{const i=S.stops.indexOf(it.id);if(i>=0)S.stops.splice(i,1);else{if(S.stops.length>=9){toast("Google Maps takes up to 9 stops. Remove one first.");return;}S.stops.push(it.id);}
     if(!S.trip)setTrip(true);saveTrip();draw(false);show(it);if(!S.dest)toast("Added. Now pick where you're heading.");};
   $("cDest").onclick=()=>{S.dest={name:it.title,lat:it.lat,lon:it.lon,q:gq(it)};S.stops=S.stops.filter(x=>x!==it.id);setTrip(true);saveTrip();C.hidden=true;S.path=null;draw(true);findRoute();};}
+/* live hours and ratings from Google (Places API); quietly skipped if it is not switched on */
+const GCACHE={};
+function nameOk(ours,theirs){const t=String(theirs||"").toLowerCase();return ours.toLowerCase().split(/[^a-z0-9]+/).filter(w=>w.length>3&&!["the","and","museum","park"].includes(w)).some(w=>t.includes(w))||t.includes(ours.toLowerCase().slice(0,8));}
+async function enrich(it){if(!it.p||!window.google||!google.maps)return;
+  const draw1=async()=>{const box=$("gdata");if(!box||box.dataset.id!==it.id)return;const g=GCACHE[it.id];if(!g)return;const pl=g.pl;let h="";
+    if(pl.businessStatus==="CLOSED_PERMANENTLY")h+='<span class="shut">Google lists this as permanently closed</span>';
+    else{let open;try{open=await pl.isOpen();}catch(_){}
+      const wd=pl.regularOpeningHours&&pl.regularOpeningHours.weekdayDescriptions;const today=wd&&wd[(new Date().getDay()+6)%7];
+      if(open!==undefined&&open!==null)h+='<span class="'+(open?'open':'shut')+'">'+(open?'Open now':'Closed now')+'</span>';
+      if(today)h+='<small>'+esc(today)+'</small>';else if(pl.regularOpeningHours===undefined)h+='<small>Hours not listed on Google</small>';}
+    if(pl.rating)h+='<span><span class="star">★</span> <b>'+pl.rating.toFixed(1)+'</b> <small>'+(pl.userRatingCount?'('+pl.userRatingCount.toLocaleString()+' Google reviews)':'on Google')+'</small></span>';
+    if(pl.googleMapsURI)h+='<a href="'+esc(pl.googleMapsURI)+'" target="_blank" rel="noopener">See photos and reviews on Google Maps</a>';
+    if(box.dataset.id===it.id)box.innerHTML=h;};
+  if(GCACHE[it.id]!==undefined){draw1();return;}
+  try{if(!placesLib)placesLib=await google.maps.importLibrary("places");
+    const r=await placesLib.Place.searchByText({textQuery:it.p.name+", "+it.p.city+", "+it.p.state,fields:["displayName","location","rating","userRatingCount","regularOpeningHours","googleMapsURI","businessStatus"],maxResultCount:3,locationBias:{lat:it.lat,lng:it.lon}});
+    const lim=it.p.category==="oddity"?4:1.5;
+    const hit=(r.places||[]).find(x=>x.location&&miles({lat:it.lat,lon:it.lon},{lat:x.location.lat(),lon:x.location.lng()})<=lim&&nameOk(it.p.name,x.displayName));
+    GCACHE[it.id]=hit?{pl:hit}:null;}
+  catch(_){return;}
+  draw1();}
 function gq(it){return it.p&&it.p.category==="oddity"?it.lat+","+it.lon:it.p?it.p.name+", "+it.p.city+", "+it.p.state:it.e?it.e.venue+", "+it.e.city+", "+it.e.state:it.lat+","+it.lon;}
 /* ---- trip planner: stops near the straight line from where you are to where you're heading ---- */
 let routeLine=null,destMarker=null;
