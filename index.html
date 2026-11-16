@@ -209,7 +209,8 @@ function draw(fit){ITEMS=compute();
       title:g.length>1?g.length+" things here":g[0].title,label:g.length>1?{text:String(g.length),color:"#ffffff",fontSize:"11px",fontWeight:"700"}:null});
     m.addListener("click",()=>g.length>1?showGroup(g):show(g[0]));return m;});
   if(window.markerClusterer){clusterer=clusterer||new markerClusterer.MarkerClusterer({map});clusterer.addMarkers(markers);}else markers.forEach(m=>m.setMap(map));
-  drawRoute();renderTrip();if(fit)fitAll();}
+  drawRoute();renderTrip();if(fit)fitAll();else hintOffscreen();}
+function hintOffscreen(){try{const bd=map.getBounds();if(!bd||!ITEMS.length)return;if(!ITEMS.some(i=>bd.contains({lat:i.lat,lng:i.lon})))toast(ITEMS.length+" matching pin"+(ITEMS.length===1?" is":"s are")+" outside this view. Tap Fit all to see them.");}catch(_){}}
 function fitAll(){if(!map||(!ITEMS.length&&!(S.trip&&S.dest)))return;const b=new google.maps.LatLngBounds();ITEMS.forEach(i=>b.extend({lat:i.lat,lng:i.lon}));b.extend({lat:S.origin.lat,lng:S.origin.lon});if(S.trip&&S.dest)b.extend({lat:S.dest.lat,lng:S.dest.lon});
   map.fitBounds(b,{top:S.trip?260:120,bottom:40,left:30,right:30});}
 
@@ -321,9 +322,9 @@ function showGroup(g){const C=$("card");g.sort((a,b)=>(a.o?a.o.date:"0").localeC
   C.hidden=false;C.scrollTop=0;$("cx").onclick=()=>{C.hidden=true;};C.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>show(g[+b.dataset.i]));}
 function toast(t){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,3500);}
 
-document.querySelectorAll("[data-layer]").forEach(b=>b.onclick=()=>{S.layer=b.dataset.layer;document.querySelectorAll("[data-layer]").forEach(x=>x.setAttribute("aria-pressed",x===b));draw(true);});
+document.querySelectorAll("[data-layer]").forEach(b=>b.onclick=()=>{S.layer=b.dataset.layer;document.querySelectorAll("[data-layer]").forEach(x=>x.setAttribute("aria-pressed",x===b));draw(false);});
 $("fFree").onclick=e=>{S.free=!S.free;e.currentTarget.setAttribute("aria-pressed",S.free);draw(false);};
-["when","cat","drive"].forEach(id=>$(id).onchange=()=>draw(id!=="cat"));
+["when","cat","drive"].forEach(id=>$(id).onchange=()=>draw(false));
 $("fit").onclick=fitAll;
 $("home").onclick=()=>{S.origin=HOME;S.path=null;setTimeout(findRoute,0);if(map){meMarker&&meMarker.setMap(null);}draw(true);toast("Distances from Evansville");};
 let meMarker=null;
