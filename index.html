@@ -60,6 +60,15 @@ select.chip{appearance:none;padding-right:13px}
 .trip{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;box-shadow:0 2px 10px rgba(0,0,0,.12);max-width:760px;width:100%;justify-self:center;display:grid;gap:8px;max-height:42vh;overflow-y:auto}
 .trip .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .trip label{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.legend{position:fixed;z-index:5;left:max(12px,env(safe-area-inset-left,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 34px);display:grid;gap:6px;justify-items:start}
+.legend>button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;padding:8px 12px;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.18);cursor:pointer}
+.lgd{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:8px;box-shadow:0 2px 12px rgba(0,0,0,.22);display:grid;gap:2px;max-height:55vh;overflow-y:auto}
+.lgd h4{margin:6px 6px 2px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.lgd button{display:flex;align-items:center;gap:10px;border:0;background:transparent;color:var(--ink);padding:6px 8px;border-radius:8px;font-size:14px;text-align:left;cursor:pointer}
+.lgd button[aria-pressed="true"]{background:var(--chip);font-weight:600}
+.lgd i{flex:none;width:14px;height:14px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.lgd i.ev{border-radius:4px}
+.lgd small{color:var(--muted);padding:4px 8px 2px;font-size:12.5px}
 .gdata{display:grid;gap:4px;font-size:14px}
 .gdata:empty{display:none}
 .gdata .open{color:var(--accent);font-weight:600}.gdata .shut{color:var(--warn);font-weight:600}
@@ -122,6 +131,7 @@ select.chip{appearance:none;padding-right:13px}
 
 <div class="fab"><button type="button" id="nearMe">Near me</button><button type="button" id="home">Home</button><button type="button" id="fit">Fit all</button></div>
 <section class="card" id="card" hidden aria-live="polite"></section>
+<div class="legend"><div class="lgd" id="lgd" hidden></div><button type="button" id="lgdBtn" aria-expanded="false">Legend</button></div>
 <div class="toast" id="toast" hidden></div>
 
 <script src="config.js"></script>
@@ -192,12 +202,22 @@ function computeAll(){const out=[],cat=$("cat").value,maxD=S.trip&&S.dest?99999:
     if(S.free&&!(e.is_free||e.price_max===0))return; if(cat&&!(ECATS[cat]||[]).includes(e.category))return; if(CATS[cat])return;
     const d=miles(S.origin,e),dm=driveMin(d);if(dm>maxD)return;
     out.push({k:"e",id:"e-"+e.id,lat:e.lat,lon:e.lon,title:e.title,d,dm,e,o});});}
-  return out;}
+  out.forEach(it=>it.ck=kindOf(it));return out;}
 
-function icon(k){const c=getComputedStyle(document.documentElement).getPropertyValue("--pin-"+k).trim()||"#0f7a5c";
-  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36"><path d="M14 35s12-12.5 12-21A12 12 0 0 0 2 14c0 8.5 12 21 12 21z" fill="'+c+'" stroke="white" stroke-width="2"/><circle cx="14" cy="14" r="4.5" fill="white"/></svg>';
-  return {url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg),scaledSize:new google.maps.Size(28,36),anchor:new google.maps.Point(14,35)};}
-let ICONS=null;
+/* pin colors: teardrop pins are places, rounded-square pins are events; color says the kind */
+const KINDS={museum:["Museums & history","#2f6fd0"],art:["Art","#d94f9a"],science:["Science & kids","#12a5b8"],zoo:["Zoos","#e08a1e"],nature:["Nature & trails","#2d9b4a"],fun:["Fun & nightlife","#6a4fd0"],oddity:["Roadside oddities","#a33fc4"],
+  music:["Music","#d93a3a"],sports:["Sports","#1d3f9c"],arts:["Theater & film","#c2185b"],holiday:["Holiday","#b58900"],family:["Family, markets & community","#5d8a2e"]};
+const PLACE_KINDS=["museum","art","science","zoo","nature","fun","oddity"],EVENT_KINDS=["music","sports","arts","holiday","family"];
+function kindOf(it){if(it.p){const c=Object.keys(CATS).find(k=>CATS[k].includes(it.p.category));return c||"museum";}
+  const c=Object.keys(ECATS).find(k=>ECATS[k].includes(it.e.category));return c||"family";}
+const ICACHE={};
+function icon(color,shape,star){const key=color+shape+(star?"*":"");if(ICACHE[key])return ICACHE[key];const sc=star?1.25:1,vh=shape==="e"?34:36,w=28*sc,h=vh*sc;
+  const body=shape==="e"?'<path d="M5 3h18a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3h-6.5L14 29.500 11.500 23H5a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3z" fill="'+color+'" stroke="white" stroke-width="2"/>':
+    '<path d="M14 35s12-12.5 12-21A12 12 0 0 0 2 14c0 8.5 12 21 12 21z" fill="'+color+'" stroke="white" stroke-width="2"/>';
+  const mark=star?'<text x="14" y="'+(shape==="e"?18:19)+'" text-anchor="middle" font-size="14" font-weight="700" fill="white" font-family="Arial,sans-serif">★</text>':(shape==="e"?'<rect x="9.500" y="8" width="9" height="9" rx="2" fill="white"/>':'<circle cx="14" cy="14" r="4.500" fill="white"/>');
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'" viewBox="0 0 28 '+vh+'">'+body+mark+'</svg>';
+  return ICACHE[key]={url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg),scaledSize:new google.maps.Size(w,h),anchor:new google.maps.Point(w/2,h-1)};}
+const MIXED="#37474f";
 function draw(fit){ITEMS=compute();
   const nP=ITEMS.filter(i=>i.k!=="e").length,nE=ITEMS.length-nP;
   $("count").textContent=S.layer==="both"?(nP+nE)+" pins":S.layer==="p"?nP+" places":nE+" events";$("count").title=nP+" places, "+nE+" events";
@@ -205,7 +225,8 @@ function draw(fit){ITEMS=compute();
   markers.forEach(m=>m.setMap(null));if(clusterer)clusterer.clearMarkers();
   // group items that share a spot so one tap lists them all
   const spots={};ITEMS.forEach(it=>{const key=it.lat.toFixed(4)+","+it.lon.toFixed(4);(spots[key]=spots[key]||[]).push(it);});
-  markers=Object.values(spots).map(g=>{const m=new google.maps.Marker({position:{lat:g[0].lat,lng:g[0].lon},icon:ICONS[g.some(x=>S.stops.includes(x.id))?"t":g.length>1&&new Set(g.map(x=>x.k)).size>1?"e":g[0].k],
+  markers=Object.values(spots).map(g=>{const kinds=new Set(g.map(x=>x.ck)),shapes=new Set(g.map(x=>x.k==="e"?"e":"p")),inTrip=g.some(x=>S.stops.includes(x.id));
+    const m=new google.maps.Marker({position:{lat:g[0].lat,lng:g[0].lon},icon:icon(kinds.size>1?MIXED:KINDS[g[0].ck][1],shapes.size>1?"p":(g[0].k==="e"?"e":"p"),inTrip&&g.length===1),zIndex:inTrip?500:undefined,
       title:g.length>1?g.length+" things here":g[0].title,label:g.length>1?{text:String(g.length),color:"#ffffff",fontSize:"11px",fontWeight:"700"}:null});
     m.addListener("click",()=>g.length>1?showGroup(g):show(g[0]));return m;});
   if(window.markerClusterer){clusterer=clusterer||new markerClusterer.MarkerClusterer({map});clusterer.addMarkers(markers);}else markers.forEach(m=>m.setMap(map));
@@ -280,7 +301,7 @@ function renderTrip(){if(!S.trip)return;fillDest();const st=tripStops(),H=$("tri
 function drawRoute(){if(!map)return;if(routeLine){routeLine.setMap(null);routeLine=null;}if(destMarker){destMarker.setMap(null);destMarker=null;}
   if(!S.trip||!S.dest)return;const pts=(S.path||[S.origin,...tripStops(),S.dest]).map(p=>({lat:p.lat,lng:p.lon}));
   routeLine=new google.maps.Polyline({map,path:pts,geodesic:true,strokeColor:"#1a73e8",strokeOpacity:.75,strokeWeight:4});
-  destMarker=new google.maps.Marker({map,position:pts[pts.length-1],title:"Heading to "+S.dest.name,label:{text:"★",color:"#ffffff",fontSize:"13px"},icon:ICONS.t,zIndex:998});}
+  destMarker=new google.maps.Marker({map,position:pts[pts.length-1],title:"Heading to "+S.dest.name,label:{text:"★",color:"#ffffff",fontSize:"13px"},icon:icon("#1a73e8","p",true),zIndex:998});}
 $("tripBtn").onclick=()=>{setTrip(!S.trip);draw(true);findRoute();};
 /* type-in destination: our own places and cities first, then Google place suggestions when the Places API is switched on */
 let sugTimer=null,sugSeq=0,sugList=[],placesLib=null,sessTok=null;
@@ -318,7 +339,7 @@ $("tripClear").onclick=()=>{S.stops=[];saveTrip();draw(false);};
 try{const t=JSON.parse(localStorage.getItem("dayout-trip")||"null");if(t){S.dest=t.dest||null;S.stops=Array.isArray(t.stops)?t.stops:[];}}catch(_){}
 function showGroup(g){const C=$("card");g.sort((a,b)=>(a.o?a.o.date:"0").localeCompare(b.o?b.o.date:"0"));
   C.innerHTML='<button type="button" class="x" id="cx">Close</button><h2>'+g.length+' things here</h2><div class="list">'+
-    g.map((it,i)=>'<button type="button" data-i="'+i+'"><b>'+esc(it.title)+'</b><small>'+(it.e?esc(niceDate(it.o.date,it.o.time))+' · '+esc(priceTxt(it.e)):esc(it.p.city)+' · '+TIER[it.p.cost_tier])+'</small></button>').join("")+'</div>';
+    g.map((it,i)=>'<button type="button" data-i="'+i+'"><b><span style="display:inline-block;width:10px;height:10px;border-radius:'+(it.e?'3px':'50%')+';background:'+KINDS[it.ck][1]+';margin-right:7px"></span>'+esc(it.title)+'</b><small>'+(it.e?esc(niceDate(it.o.date,it.o.time))+' · '+esc(priceTxt(it.e)):esc(it.p.city)+' · '+TIER[it.p.cost_tier])+'</small></button>').join("")+'</div>';
   C.hidden=false;C.scrollTop=0;$("cx").onclick=()=>{C.hidden=true;};C.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>show(g[+b.dataset.i]));}
 function toast(t){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,3500);}
 
@@ -326,6 +347,11 @@ document.querySelectorAll("[data-layer]").forEach(b=>b.onclick=()=>{S.layer=b.da
 $("fFree").onclick=e=>{S.free=!S.free;e.currentTarget.setAttribute("aria-pressed",S.free);draw(false);};
 ["when","cat","drive"].forEach(id=>$(id).onchange=()=>draw(false));
 $("fit").onclick=fitAll;
+function renderLegend(){const cat=$("cat").value,row=(k,sh)=>'<button type="button" data-k="'+k+'" aria-pressed="'+(cat===k)+'"><i class="'+(sh==="e"?"ev":"")+'" style="background:'+KINDS[k][1]+'"></i>'+esc(KINDS[k][0])+'</button>';
+  $("lgd").innerHTML='<h4>Places (pins)</h4>'+PLACE_KINDS.map(k=>row(k,"p")).join("")+'<h4>Events (squares)</h4>'+EVENT_KINDS.map(k=>row(k,"e")).join("")+'<small>Dark pins hold several kinds. Tap a color to show only that kind; tap again to show all.</small>';}
+$("lgdBtn").onclick=()=>{const o=$("lgd").hidden;$("lgd").hidden=!o;$("lgdBtn").setAttribute("aria-expanded",o);if(o)renderLegend();};
+$("lgd").onclick=e=>{const b=e.target.closest("[data-k]");if(!b)return;const c=$("cat");c.value=c.value===b.dataset.k?"":b.dataset.k;renderLegend();draw(false);};
+$("cat").addEventListener("change",()=>{if(!$("lgd").hidden)renderLegend();});
 $("home").onclick=()=>{S.origin=HOME;S.path=null;setTimeout(findRoute,0);if(map){meMarker&&meMarker.setMap(null);}draw(true);toast("Distances from Evansville");};
 let meMarker=null;
 $("nearMe").onclick=()=>{if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}toast("Finding you…");
@@ -338,7 +364,6 @@ $("nearMe").onclick=()=>{if(!navigator.geolocation){toast("Location isn't availa
 window.initMap=function(){
   map=new google.maps.Map($("map"),{center:{lat:HOME.lat,lng:HOME.lon},zoom:8,mapTypeControl:false,streetViewControl:false,fullscreenControl:false,clickableIcons:true,
     gestureHandling:"greedy",colorScheme:matchMedia("(prefers-color-scheme: dark)").matches?"DARK":"LIGHT"});
-  ICONS={p:icon("p"),o:icon("o"),e:icon("e"),t:icon("t")};
   new google.maps.Marker({map,position:{lat:HOME.lat,lng:HOME.lon},title:"Home: Evansville",icon:{path:google.maps.SymbolPath.CIRCLE,scale:6,fillColor:"#15302a",fillOpacity:1,strokeColor:"#fff",strokeWeight:2}});
   map.addListener("click",()=>{$("card").hidden=true;});
   draw(true);};
