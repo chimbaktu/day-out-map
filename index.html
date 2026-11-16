@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day Out Map</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0f7a5c">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Full-screen Google map; a floating filter bar on top and a details card that slides up from the bottom */
+:root{
+  --bg:#f3f6f4; --surface:#ffffff; --ink:#15302a; --muted:#5b6e68; --line:#d6e0dc; --chip:#e6eeea;
+  --accent:#0f7a5c; --accent-ink:#ffffff; --sun:#f2b33d; --sun-soft:#fff3d6; --sun-ink:#6a4a05; --warn:#a4570e; --warn-soft:#fdf0e1;
+  --pin-p:#0f7a5c; --pin-o:#7a3fb0; --pin-e:#c4501f; --pin-t:#1a73e8;
+  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif; --f-body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0f1715; --surface:#17221f; --ink:#e3eeea; --muted:#94a8a1; --line:#2a3a35; --chip:#22302c;
+  --accent:#3fbf93; --accent-ink:#06231a; --sun-soft:#3a2e12; --sun-ink:#ffd98a; --warn:#f0a65c; --warn-soft:#3a2a17; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-body);overflow:hidden}
+#map{position:fixed!important;inset:0;width:100%;height:100%}
+.top{position:fixed;left:0;right:0;top:0;z-index:5;padding:calc(env(safe-area-inset-top,0px) + 10px) max(12px,env(safe-area-inset-right,0px)) 0 max(12px,env(safe-area-inset-left,0px));display:grid;gap:8px;pointer-events:none}
+.top>*{pointer-events:auto}
+.bar{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:8px 10px;box-shadow:0 2px 10px rgba(0,0,0,.12);max-width:760px;width:100%;justify-self:center}
+.bar h1{font:800 19px/1 var(--f-display);margin:0;letter-spacing:-.01em;white-space:nowrap}
+.bar .count{margin-left:auto;font-size:13px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;max-width:760px;width:100%;justify-self:center;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+button,select,a.btn{font:inherit}
+.chip{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:7px 13px;font-size:14px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+select.chip{appearance:none;padding-right:13px}
+.seg{display:inline-flex;background:var(--chip);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;background:transparent;color:var(--ink);padding:5px 10px;border-radius:8px;font-size:13.5px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.fab{position:fixed;z-index:5;right:max(12px,env(safe-area-inset-right,0px));bottom:calc(env(safe-area-inset-bottom,0px) + 28px);display:grid;gap:8px}
+.fab button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:12px;padding:10px 12px;font-size:14px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.18);cursor:pointer}
+.card{position:fixed;z-index:6;left:0;right:0;bottom:0;margin:0 auto;max-width:620px;max-height:62vh;overflow-y:auto;background:var(--surface);border-radius:18px 18px 0 0;box-shadow:0 -4px 20px rgba(0,0,0,.2);
+  padding:14px max(16px,env(safe-area-inset-right,0px)) calc(env(safe-area-inset-bottom,0px) + 16px) max(16px,env(safe-area-inset-left,0px));display:grid;gap:8px}
+.card h2{font:600 21px/1.2 var(--f-display);margin:0;text-wrap:balance;padding-right:70px}
+.card .x{position:absolute;right:12px;top:12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:6px 10px;cursor:pointer}
+.meta{display:flex;flex-wrap:wrap;gap:4px 14px;color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums}
+.meta b{color:var(--ink);font-weight:600}
+.card p{margin:0}
+.check{background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:7px 12px;font-size:13.5px}
+.tags{display:flex;flex-wrap:wrap;gap:5px}.tag{background:var(--chip);border-radius:6px;padding:2px 8px;font-size:12.5px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+.btn{display:inline-flex;align-items:center;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:10px;padding:8px 12px;font-size:14px;font-weight:500;text-decoration:none;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.list{display:grid;gap:6px}
+.list button{display:grid;text-align:left;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:10px;padding:8px 12px;cursor:pointer}
+.list small{color:var(--muted)}
+.msg{position:fixed;inset:0;display:grid;place-items:center;text-align:center;padding:24px;color:var(--muted)}
+.toast{position:fixed;z-index:7;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 90px);background:var(--ink);color:var(--bg);border-radius:10px;padding:8px 14px;font-size:14px}
+.trip{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;box-shadow:0 2px 10px rgba(0,0,0,.12);max-width:760px;width:100%;justify-self:center;display:grid;gap:8px;max-height:42vh;overflow-y:auto}
+.trip .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.trip label{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.trip select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:6px 8px;min-width:0;flex:1 1 120px}
+.trip .hint{font-size:13.5px;color:var(--muted)}
+.stops{display:grid;gap:4px;margin:0;padding:0;list-style:none}
+.stops li{display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:10px;padding:5px 6px 5px 10px;font-size:14px}
+.stops li span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stops small{color:var(--muted);font-variant-numeric:tabular-nums}
+.stops button{border:0;background:none;color:var(--muted);font-size:18px;line-height:1;padding:2px 6px;cursor:pointer}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="map"><div class="msg" id="msg">Loading the map…</div></div>
+
+<div class="top">
+  <div class="bar">
+    <h1>Day Out</h1>
+    <div class="seg" role="group" aria-label="Show">
+      <button type="button" data-layer="both" aria-pressed="true">Both</button>
+      <button type="button" data-layer="p" aria-pressed="false">Places</button>
+      <button type="button" data-layer="e" aria-pressed="false">Events</button>
+    </div>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="chips" role="group" aria-label="Filters">
+    <button type="button" class="chip" id="tripBtn" aria-pressed="false">Plan a trip</button>
+    <select class="chip" id="when" aria-label="When (events)">
+      <option value="0">Today</option><option value="wk">This weekend</option><option value="7">Next 7 days</option>
+      <option value="30" selected>Next 30 days</option><option value="90">Next 3 months</option>
+    </select>
+    <button type="button" class="chip" id="fFree" aria-pressed="false">Free</button>
+    <select class="chip" id="cat" aria-label="Kind">
+      <option value="">Any kind</option><option value="museum">Museums &amp; history</option><option value="art">Art</option><option value="science">Science &amp; kids</option>
+      <option value="zoo">Zoos</option><option value="nature">Nature &amp; trails</option><option value="fun">Fun &amp; nightlife</option><option value="oddity">Roadside oddities</option>
+      <option value="music">Music (events)</option><option value="sports">Sports (events)</option><option value="arts">Theater &amp; film (events)</option><option value="holiday">Holiday (events)</option><option value="family">Family &amp; community (events)</option>
+    </select>
+    <select class="chip" id="drive" aria-label="Drive">
+      <option value="9999">Any distance</option><option value="30">Within 30 min</option><option value="60">Within 1 hr</option><option value="120">Within 2 hrs</option><option value="240">Within 4 hrs</option>
+    </select>
+  </div>
+  <section class="trip" id="trip" hidden aria-label="Trip planner">
+    <div class="row"><label for="dest">Heading to</label><select id="dest"></select>
+      <label for="detour">Detour</label><select id="detour" style="flex:0 1 110px"><option value="5">5 mi</option><option value="15" selected>15 mi</option><option value="30">30 mi</option><option value="50">50 mi</option></select></div>
+    <div class="hint" id="tripHint"></div>
+    <ol class="stops" id="stops"></ol>
+    <div class="row" id="tripActs" hidden><a class="btn primary" id="tripGo" target="_blank" rel="noopener" href="#">Open route in Google Maps</a><button type="button" class="btn" id="tripClear">Clear stops</button></div>
+  </section>
+</div>
+
+<div class="fab"><button type="button" id="nearMe">Near me</button><button type="button" id="home">Home</button><button type="button" id="fit">Fit all</button></div>
+<section class="card" id="card" hidden aria-live="polite"></section>
+<div class="toast" id="toast" hidden></div>
+
+<script src="config.js"></script>
+<script>
+const APP_URL="https://claude.ai/artifact/7hKJXpDmDRqijqihZ7FiLG";
+const HOME={name:"Evansville",lat:37.9716,lon:-87.5711};
+const CATS={oddity:["oddity"],museum:["museum","history","library"],art:["art"],science:["science","children"],zoo:["zoo"],nature:["nature","trail","park"],fun:["neighborhood","sports","amusement","music"]};
+const ECATS={music:["music"],sports:["sports","fitness"],arts:["arts","film"],holiday:["holiday"],family:["family","community","learning","food","market"]};
+const MOODS={social:"Social",solo_friendly:"OK alone",relaxing:"Relaxing",calming:"Calming",exercise:"Exercise",date_day:"Date day",outdoors:"Outdoors",indoors:"Indoors",quiet:"Quiet",loud:"Loud & lively",easy:"Easy",strenuous:"Strenuous"};
+const TIER={free:"Free","$":"$","$$":"$$","$$$":"$$$"};
+const CITIES = [
+ ["Evansville, IN",37.9716,-87.5711],["Newburgh, IN",37.9445,-87.405],["Boonville, IN",38.0492,-87.2742],["Mt. Vernon, IN",37.9323,-87.8953],
+ ["Princeton, IN",38.3553,-87.5675],["Vincennes, IN",38.6773,-87.5286],["Jasper, IN",38.3914,-86.931],["Tell City, IN",37.9514,-86.7678],
+ ["Santa Claus, IN",38.12,-86.914],["New Harmony, IN",38.1298,-87.9353],["Terre Haute, IN",39.4667,-87.4139],["Bloomington, IN",39.1653,-86.5264],
+ ["Indianapolis, IN",39.7684,-86.1581],["Columbus, IN",39.2014,-85.9214],["New Albany, IN",38.2856,-85.8241],["Lafayette, IN",40.4167,-86.8753],
+ ["Henderson, KY",37.8362,-87.5900],["Owensboro, KY",37.7719,-87.1112],["Madisonville, KY",37.3281,-87.4989],["Paducah, KY",37.0834,-88.6000],
+ ["Bowling Green, KY",36.9685,-86.4808],["Louisville, KY",38.2527,-85.7585],["Lexington, KY",38.0406,-84.5037],["Cadiz, KY",36.8651,-87.8353],
+ ["Mammoth Cave, KY",37.1870,-86.1],["Carbondale, IL",37.7273,-89.2168],["Mt. Vernon, IL",38.3173,-88.9031],["Harrisburg, IL",37.7384,-88.5406],
+ ["Springfield, IL",39.7817,-89.6501],["Chicago, IL",41.8781,-87.6298],["St. Louis, MO",38.627,-90.1994],["Kansas City, MO",39.0997,-94.5786],
+ ["Nashville, TN",36.1627,-86.7816],["Clarksville, TN",36.5298,-87.3595],["Murfreesboro, TN",35.8456,-86.3903],["Memphis, TN",35.1495,-90.049],
+ ["Chattanooga, TN",35.0456,-85.3097],["Knoxville, TN",35.9606,-83.9207],["Gatlinburg, TN",35.7143,-83.5102],["Cincinnati, OH",39.1031,-84.512],
+ ["Columbus, OH",39.9612,-82.9988],["Dayton, OH",39.7589,-84.1916]
+];
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pad=n=>String(n).padStart(2,"0"),dstr=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const S={trip:false,dest:null,stops:[],path:null,routeMi:null,routeMin:null,layer:"both",free:false,origin:HOME,sel:null};
+let PLACES=[],EVENTS=[],EVUPD=null,map,info,markers=[],clusterer=null,ITEMS=[];
+function miles(a,b){const R=3958.8,t=x=>x*Math.PI/180,dl=t(b.lat-a.lat),dn=t(b.lon-a.lon);const h=Math.sin(dl/2)**2+Math.cos(t(a.lat))*Math.cos(t(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h));}
+function driveMin(d){const r=d*1.25;return Math.round(r/(d<15?30:55)*60)+5;}
+function fmtMin(n){if(n<60)return n+" min";const h=Math.floor(n/60),m=n%60;return h+" hr"+(m?" "+m+" min":"");}
+function windowRange(){const t=new Date();t.setHours(0,0,0,0);const v=$("when").value;
+  if(v==="wk"){const d=t.getDay(),s=new Date(t);if(d!==6&&d!==0)s.setDate(t.getDate()+(5-d));const e=new Date(s);e.setDate(s.getDate()+(s.getDay()===5?2:s.getDay()===6?1:0));return [s,e];}
+  const e=new Date(t);e.setDate(t.getDate()+(+v));return [t,e];}
+function nextDate(e,from,to){const f=dstr(from),t=dstr(to);
+  if(Array.isArray(e.shows)&&e.shows.length){const s=e.shows.map(x=>x.slice(0,10)).sort().find(d=>d>=f&&d<=t);return s?{date:s,time:(e.shows.find(x=>x.startsWith(s))||"").slice(11)||e.time}:null;}
+  const end=e.end_date||e.date;if(end<f||e.date>t)return null;return {date:e.date<f?f:e.date,time:e.time};}
+function priceTxt(e){if(e.is_free||e.price_max===0)return "Free";if(e.price_min==null)return "Price not listed";
+  return "$"+e.price_min+(e.price_max&&e.price_max!==e.price_min?"–$"+e.price_max:"")+(e.price_estimated?" (est.)":"");}
+function niceDate(d,t){const x=new Date(d+"T"+(t||"12:00"));return x.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})+(t?" · "+x.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"}):"");}
+
+function routePath(){return S.path&&S.path.length>1?S.path:[S.origin,S.dest];}
+function offRoute(pt){// miles off the route (road route when Google gives one, else a straight line), and miles along it
+  const P=routePath(),k=Math.cos(pt.lat*Math.PI/180)*69.17,px=pt.lon*k,py=pt.lat*69.05;let best=1e9,along=0,run=0;
+  for(let i=0;i<P.length-1;i++){const ax=P[i].lon*k,ay=P[i].lat*69.05,bx=P[i+1].lon*k,by=P[i+1].lat*69.05,dx=bx-ax,dy=by-ay,L2=dx*dx+dy*dy||1e-9,L=Math.sqrt(L2);
+    let t=((px-ax)*dx+(py-ay)*dy)/L2;t=Math.max(0,Math.min(1,t));const d=Math.hypot(px-(ax+t*dx),py-(ay+t*dy));if(d<best){best=d;along=run+t*L;}run+=L;}
+  return {off:best,along:S.path?along:along*1.25};}
+let routeSeq=0;
+async function findRoute(){S.path=null;S.routeMi=null;S.routeMin=null;if(!map||!S.trip||!S.dest)return;const seq=++routeSeq,o={lat:S.origin.lat,lng:S.origin.lon},d={lat:S.dest.lat,lng:S.dest.lon};let path=null,mi=null,min=null;
+  try{const {Route}=await google.maps.importLibrary("routes");if(Route&&Route.computeRoutes){const r=await Route.computeRoutes({origin:o,destination:d,travelMode:"DRIVING",fields:["path","distanceMeters","durationMillis"]});
+      const rt=r.routes&&r.routes[0];if(rt&&rt.path&&rt.path.length>1){path=rt.path.map(p=>({lat:typeof p.lat==="function"?p.lat():p.lat,lon:typeof p.lng==="function"?p.lng():p.lng}));mi=rt.distanceMeters/1609.34;min=rt.durationMillis?rt.durationMillis/60000:null;}}}catch(_){}
+  if(!path){try{const r=await new google.maps.DirectionsService().route({origin:o,destination:d,travelMode:"DRIVING"});const rt=r.routes[0];
+      path=rt.overview_path.map(p=>({lat:p.lat(),lon:p.lng()}));mi=rt.legs.reduce((n,l)=>n+l.distance.value,0)/1609.34;min=rt.legs.reduce((n,l)=>n+l.duration.value,0)/60;}catch(_){}}
+  if(seq!==routeSeq)return;if(path){if(path.length>400){const st=Math.ceil(path.length/400);path=path.filter((p,i)=>i%st===0||i===path.length-1);}S.path=path;S.routeMi=mi;S.routeMin=min;draw(true);}}
+function allItems(){const o=[];PLACES.forEach(p=>o.push({k:p.category==="oddity"?"o":"p",id:p.id,lat:p.lat,lon:p.lon,title:p.name,p}));
+  const t=new Date();t.setHours(0,0,0,0);const far=new Date(t);far.setDate(t.getDate()+90);
+  EVENTS.forEach(e=>{if(e.lat==null)return;const oc=nextDate(e,t,far);if(oc)o.push({k:"e",id:"e-"+e.id,lat:e.lat,lon:e.lon,title:e.title,e,o:oc});});return o;}
+function tripStops(){if(!S.dest)return [];const all=allItems();return S.stops.map(id=>all.find(x=>x.id===id)).filter(Boolean).map(it=>{const r=offRoute(it);it.off=r.off;it.along=r.along;it.d=miles(S.origin,it);it.dm=driveMin(it.d);return it;}).sort((a,b)=>a.along-b.along);}
+function compute(){const out0=computeAll();if(!S.trip||!S.dest)return out0;const w=+$("detour").value;
+  return out0.filter(it=>{const r=offRoute(it);it.off=r.off;it.along=r.along;return (r.off<=w&&miles(S.origin,it)>5)||S.stops.includes(it.id);}).sort((a,b)=>a.along-b.along);}
+function computeAll(){const out=[],cat=$("cat").value,maxD=S.trip&&S.dest?99999:+$("drive").value;
+  if(S.layer!=="e")PLACES.forEach(p=>{
+    if(S.free&&p.cost_tier!=="free")return;
+    if(cat&&!(CATS[cat]||[]).includes(p.category))return; if(ECATS[cat])return;
+    const d=miles(S.origin,p),dm=driveMin(d);if(dm>maxD)return;
+    out.push({k:p.category==="oddity"?"o":"p",id:p.id,lat:p.lat,lon:p.lon,title:p.name,d,dm,p});});
+  if(S.layer!=="p"){const [f,t]=windowRange();EVENTS.forEach(e=>{if(e.lat==null)return;const o=nextDate(e,f,t);if(!o)return;
+    if(S.free&&!(e.is_free||e.price_max===0))return; if(cat&&!(ECATS[cat]||[]).includes(e.category))return; if(CATS[cat])return;
+    const d=miles(S.origin,e),dm=driveMin(d);if(dm>maxD)return;
+    out.push({k:"e",id:"e-"+e.id,lat:e.lat,lon:e.lon,title:e.title,d,dm,e,o});});}
+  return out;}
+
+function icon(k){const c=getComputedStyle(document.documentElement).getPropertyValue("--pin-"+k).trim()||"#0f7a5c";
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" width="28" height="36" viewBox="0 0 28 36"><path d="M14 35s12-12.5 12-21A12 12 0 0 0 2 14c0 8.5 12 21 12 21z" fill="'+c+'" stroke="white" stroke-width="2"/><circle cx="14" cy="14" r="4.5" fill="white"/></svg>';
+  return {url:"data:image/svg+xml;charset=UTF-8,"+encodeURIComponent(svg),scaledSize:new google.maps.Size(28,36),anchor:new google.maps.Point(14,35)};}
+let ICONS=null;
+function draw(fit){ITEMS=compute();
+  const nP=ITEMS.filter(i=>i.k!=="e").length,nE=ITEMS.length-nP;
+  $("count").textContent=S.layer==="both"?(nP+nE)+" pins":S.layer==="p"?nP+" places":nE+" events";$("count").title=nP+" places, "+nE+" events";
+  if(!map)return;
+  markers.forEach(m=>m.setMap(null));if(clusterer)clusterer.clearMarkers();
+  // group items that share a spot so one tap lists them all
+  const spots={};ITEMS.forEach(it=>{const key=it.lat.toFixed(4)+","+it.lon.toFixed(4);(spots[key]=spots[key]||[]).push(it);});
+  markers=Object.values(spots).map(g=>{const m=new google.maps.Marker({position:{lat:g[0].lat,lng:g[0].lon},icon:ICONS[g.some(x=>S.stops.includes(x.id))?"t":g.length>1&&new Set(g.map(x=>x.k)).size>1?"e":g[0].k],
+      title:g.length>1?g.length+" things here":g[0].title,label:g.length>1?{text:String(g.length),color:"#ffffff",fontSize:"11px",fontWeight:"700"}:null});
+    m.addListener("click",()=>g.length>1?showGroup(g):show(g[0]));return m;});
+  if(window.markerClusterer){clusterer=clusterer||new markerClusterer.MarkerClusterer({map});clusterer.addMarkers(markers);}else markers.forEach(m=>m.setMap(map));
+  drawRoute();renderTrip();if(fit)fitAll();}
+function fitAll(){if(!map||(!ITEMS.length&&!(S.trip&&S.dest)))return;const b=new google.maps.LatLngBounds();ITEMS.forEach(i=>b.extend({lat:i.lat,lng:i.lon}));b.extend({lat:S.origin.lat,lng:S.origin.lon});if(S.trip&&S.dest)b.extend({lat:S.dest.lat,lng:S.dest.lon});
+  map.fitBounds(b,{top:S.trip?260:120,bottom:40,left:30,right:30});}
+
+function gcalLink(title,start,hours,where,details){const s=d=>d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+"T"+pad(d.getHours())+pad(d.getMinutes())+"00";
+  const e=new Date(start.getTime()+hours*3600e3);
+  return "https://calendar.google.com/calendar/render?action=TEMPLATE&text="+encodeURIComponent(title)+"&dates="+s(start)+"/"+s(e)+"&ctz=America/Chicago&location="+encodeURIComponent(where)+"&details="+encodeURIComponent(details);}
+function nextSat(){const d=new Date();d.setHours(10,0,0,0);d.setDate(d.getDate()+((6-d.getDay()+7)%7||0));return d;}
+function show(it){S.sel=it;const C=$("card");let h='<button type="button" class="x" id="cx">Close</button>';
+  const dir="https://www.google.com/maps/dir/?api=1&origin="+S.origin.lat+","+S.origin.lon+"&destination="+encodeURIComponent(gq(it));
+  const inTrip=S.stops.includes(it.id);
+  const tripBtns='<button type="button" class="btn'+(inTrip?'':' primary')+'" id="cStop">'+(inTrip?'Remove from trip':'Add to trip')+'</button><button type="button" class="btn" id="cDest">Head here</button>';
+  const dist='<span><b>'+Math.round(it.d)+' mi</b> · ~'+fmtMin(it.dm)+' drive from '+esc(S.origin.name)+'</span>';
+  if(it.e){const e=it.e,o=it.o;
+    h+='<h2>'+esc(e.title)+'</h2><div class="meta"><span><b>'+esc(niceDate(o.date,o.time))+'</b>'+(e.end_date&&e.end_date!==e.date?' (runs through '+esc(niceDate(e.end_date).replace(/ · .*/,""))+')':'')+'</span><span>'+esc(e.venue)+'</span>'+dist+'<span><b>'+esc(priceTxt(e))+'</b></span></div>'+
+      (e.description?'<p>'+esc(e.description)+'</p>':'')+(e.price_note?'<div class="check">'+esc(e.price_note)+'</div>':'')+
+      '<div class="tags">'+(e.mood_tags||[]).map(t=>'<span class="tag">'+esc(MOODS[t]||t)+'</span>').join("")+'</div>'+
+      '<div class="actions">'+tripBtns+'<a class="btn" target="_blank" rel="noopener" href="'+dir+'">Directions</a>'+
+      '<a class="btn" target="_blank" rel="noopener" href="'+gcalLink(e.title,new Date(o.date+"T"+(o.time||"19:00")),e.hours||2,e.venue+", "+e.city+", "+e.state,(e.description||"")+(e.url?"\n"+e.url:""))+'">Add to Google Calendar</a>'+
+      (e.url?'<a class="btn" target="_blank" rel="noopener" href="'+esc(e.url)+'">Event page</a>':'')+'</div>';}
+  else{const p=it.p;
+    h+='<h2>'+esc(p.name)+'</h2><div class="meta"><span>'+esc(p.city)+', '+esc(p.state)+'</span>'+dist+'<span><b>'+TIER[p.cost_tier]+'</b></span><span>'+p.visit_hours[0]+'–'+p.visit_hours[1]+' hrs there</span></div>'+
+      '<p>'+esc(p.description)+'</p>'+(p.seasonal?'<div class="check">Seasonal: '+esc(p.seasonal)+'</div>':'')+
+      '<div class="tags">'+(p.mood_tags||[]).map(t=>'<span class="tag">'+esc(MOODS[t]||t)+'</span>').join("")+'</div>'+
+      '<div class="actions">'+tripBtns+'<a class="btn" target="_blank" rel="noopener" href="'+dir+'">Directions</a>'+(p.source?'<a class="btn" target="_blank" rel="noopener" href="'+esc(p.source.url)+'">Read more on '+esc(p.source.name)+'</a>':'')+
+      '<a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(p.name+", "+p.city+", "+p.state)+'">Hours &amp; reviews</a>'+
+      '<a class="btn" target="_blank" rel="noopener" href="'+gcalLink(p.name,nextSat(),p.visit_hours[1]+2*it.dm/60,p.name+", "+p.city+", "+p.state,p.description)+'">Add to Google Calendar</a></div>';}
+  h+='<a class="btn" style="justify-self:start" target="_blank" rel="noopener" href="'+APP_URL+'">Open Day Out Finder</a>';
+  C.innerHTML=h;C.hidden=false;C.scrollTop=0;$("cx").onclick=()=>{C.hidden=true;};
+  $("cStop").onclick=()=>{const i=S.stops.indexOf(it.id);if(i>=0)S.stops.splice(i,1);else{if(S.stops.length>=9){toast("Google Maps takes up to 9 stops. Remove one first.");return;}S.stops.push(it.id);}
+    if(!S.trip)setTrip(true);saveTrip();draw(false);show(it);if(!S.dest)toast("Added. Now pick where you're heading.");};
+  $("cDest").onclick=()=>{S.dest={name:it.title,lat:it.lat,lon:it.lon,q:gq(it)};S.stops=S.stops.filter(x=>x!==it.id);setTrip(true);saveTrip();C.hidden=true;S.path=null;draw(true);findRoute();};}
+function gq(it){return it.p&&it.p.category==="oddity"?it.lat+","+it.lon:it.p?it.p.name+", "+it.p.city+", "+it.p.state:it.e?it.e.venue+", "+it.e.city+", "+it.e.state:it.lat+","+it.lon;}
+/* ---- trip planner: stops near the straight line from where you are to where you're heading ---- */
+let routeLine=null,destMarker=null;
+function saveTrip(){try{localStorage.setItem("dayout-trip",JSON.stringify({dest:S.dest,stops:S.stops}));}catch(_){}}
+function setTrip(on){S.trip=on;$("tripBtn").setAttribute("aria-pressed",on);$("trip").hidden=!on;$("drive").hidden=on;}
+function fillDest(){const sel=$("dest");sel.innerHTML='<option value="">Pick a place…</option>'+(S.dest&&!CITIES.some(c=>c[0]===S.dest.name)?'<option value="pin" selected>'+esc(S.dest.name)+'</option>':'')+
+  CITIES.filter(c=>c[0]!=="Evansville, IN"||S.origin!==HOME).map(c=>'<option'+(S.dest&&S.dest.name===c[0]?' selected':'')+'>'+esc(c[0])+'</option>').join("");}
+function renderTrip(){if(!S.trip)return;fillDest();const st=tripStops(),H=$("tripHint"),L=$("stops");
+  if(!S.dest){H.textContent="Pick where you're heading, or tap any pin and choose Head here. Then the map shows only stops near your route.";L.innerHTML="";$("tripActs").hidden=true;return;}
+  const total=S.routeMi?S.routeMi/1.25:miles(S.origin,S.dest),n=ITEMS.filter(i=>!S.stops.includes(i.id)).length;
+  H.textContent="From "+S.origin.name+" to "+S.dest.name.replace(/, [A-Z]{2}$/,"")+", about "+Math.round(total*1.25)+" mi"+(S.routeMin?" ("+fmtMin(Math.round(S.routeMin))+")":"")+(S.path?"":" in a straight line")+". "+n+" possible stop"+(n===1?"":"s")+" within "+$("detour").value+" mi of the route. Tap a pin to add it."+(S.path?"":" (Stops are matched to a straight line until road routing is switched on.)");
+  L.innerHTML=st.map(it=>'<li><span>'+esc(it.title)+'</span><small>mile '+Math.round(it.along)+'</small><button type="button" data-rm="'+esc(it.id)+'" aria-label="Remove '+esc(it.title)+'">×</button></li>').join("");
+  $("tripActs").hidden=false;
+  $("tripGo").href="https://www.google.com/maps/dir/?api=1&travelmode=driving&origin="+S.origin.lat+","+S.origin.lon+"&destination="+encodeURIComponent(S.dest.q||S.dest.name)+(st.length?"&waypoints="+st.map(it=>encodeURIComponent(gq(it))).join("%7C"):"");
+  $("tripClear").hidden=!st.length;}
+function drawRoute(){if(!map)return;if(routeLine){routeLine.setMap(null);routeLine=null;}if(destMarker){destMarker.setMap(null);destMarker=null;}
+  if(!S.trip||!S.dest)return;const pts=(S.path||[S.origin,...tripStops(),S.dest]).map(p=>({lat:p.lat,lng:p.lon}));
+  routeLine=new google.maps.Polyline({map,path:pts,geodesic:true,strokeColor:"#1a73e8",strokeOpacity:.75,strokeWeight:4});
+  destMarker=new google.maps.Marker({map,position:pts[pts.length-1],title:"Heading to "+S.dest.name,label:{text:"★",color:"#ffffff",fontSize:"13px"},icon:ICONS.t,zIndex:998});}
+$("tripBtn").onclick=()=>{setTrip(!S.trip);draw(true);findRoute();};
+$("dest").onchange=e=>{const v=e.target.value;if(v==="pin")return;const c=CITIES.find(x=>x[0]===v);S.dest=c?{name:c[0],lat:c[1],lon:c[2],q:c[0]}:null;saveTrip();S.path=null;draw(true);findRoute();};
+$("detour").onchange=()=>draw(false);
+$("stops").onclick=e=>{const b=e.target.closest("[data-rm]");if(!b)return;S.stops=S.stops.filter(x=>x!==b.dataset.rm);saveTrip();draw(false);};
+$("tripClear").onclick=()=>{S.stops=[];saveTrip();draw(false);};
+try{const t=JSON.parse(localStorage.getItem("dayout-trip")||"null");if(t){S.dest=t.dest||null;S.stops=Array.isArray(t.stops)?t.stops:[];}}catch(_){}
+function showGroup(g){const C=$("card");g.sort((a,b)=>(a.o?a.o.date:"0").localeCompare(b.o?b.o.date:"0"));
+  C.innerHTML='<button type="button" class="x" id="cx">Close</button><h2>'+g.length+' things here</h2><div class="list">'+
+    g.map((it,i)=>'<button type="button" data-i="'+i+'"><b>'+esc(it.title)+'</b><small>'+(it.e?esc(niceDate(it.o.date,it.o.time))+' · '+esc(priceTxt(it.e)):esc(it.p.city)+' · '+TIER[it.p.cost_tier])+'</small></button>').join("")+'</div>';
+  C.hidden=false;C.scrollTop=0;$("cx").onclick=()=>{C.hidden=true;};C.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>show(g[+b.dataset.i]));}
+function toast(t){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,3500);}
+
+document.querySelectorAll("[data-layer]").forEach(b=>b.onclick=()=>{S.layer=b.dataset.layer;document.querySelectorAll("[data-layer]").forEach(x=>x.setAttribute("aria-pressed",x===b));draw(true);});
+$("fFree").onclick=e=>{S.free=!S.free;e.currentTarget.setAttribute("aria-pressed",S.free);draw(false);};
+["when","cat","drive"].forEach(id=>$(id).onchange=()=>draw(id!=="cat"));
+$("fit").onclick=fitAll;
+$("home").onclick=()=>{S.origin=HOME;S.path=null;setTimeout(findRoute,0);if(map){meMarker&&meMarker.setMap(null);}draw(true);toast("Distances from Evansville");};
+let meMarker=null;
+$("nearMe").onclick=()=>{if(!navigator.geolocation){toast("Location isn't available in this browser.");return;}toast("Finding you…");
+  navigator.geolocation.getCurrentPosition(pos=>{S.origin={name:"you",lat:pos.coords.latitude,lon:pos.coords.longitude};
+    if(map){meMarker&&meMarker.setMap(null);meMarker=new google.maps.Marker({map,position:{lat:S.origin.lat,lng:S.origin.lon},title:"You are here",icon:{path:google.maps.SymbolPath.CIRCLE,scale:8,fillColor:"#1a73e8",fillOpacity:1,strokeColor:"#fff",strokeWeight:3},zIndex:999});
+      map.panTo({lat:S.origin.lat,lng:S.origin.lon});map.setZoom(11);}
+    S.path=null;draw(false);findRoute();toast("Distances from where you are now");},
+    ()=>toast("Couldn't get your location. Check the browser's location permission."),{enableHighAccuracy:false,timeout:10000});};
+
+window.initMap=function(){
+  map=new google.maps.Map($("map"),{center:{lat:HOME.lat,lng:HOME.lon},zoom:8,mapTypeControl:false,streetViewControl:false,fullscreenControl:false,clickableIcons:true,
+    gestureHandling:"greedy",colorScheme:matchMedia("(prefers-color-scheme: dark)").matches?"DARK":"LIGHT"});
+  ICONS={p:icon("p"),o:icon("o"),e:icon("e"),t:icon("t")};
+  new google.maps.Marker({map,position:{lat:HOME.lat,lng:HOME.lon},title:"Home: Evansville",icon:{path:google.maps.SymbolPath.CIRCLE,scale:6,fillColor:"#15302a",fillOpacity:1,strokeColor:"#fff",strokeWeight:2}});
+  map.addListener("click",()=>{$("card").hidden=true;});
+  draw(true);};
+window.gm_authFailure=function(){$("map").innerHTML='<div class="msg">Google refused the map key. Check that the key allows this website address and the Maps JavaScript API.</div>';};
+
+(async()=>{
+  try{const [p,e]=await Promise.all([fetch("data/places.json",{cache:"no-cache"}).then(r=>r.json()),fetch("data/events.json",{cache:"no-cache"}).then(r=>r.json())]);
+    PLACES=p.places||[];EVENTS=e.items||[];EVUPD=e.updated;}catch(_){toast("Couldn't load the list of places and events.");}
+  draw(false);
+  const key=(window.DOF_CONFIG||{}).mapsKey;
+  if(!key||/PASTE/.test(key)){$("msg").textContent="The Google Maps key hasn't been added yet.";return;}
+  const s=document.createElement("script");s.async=true;
+  s.src="https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(key)+"&v=weekly&loading=async&callback=initMap";
+  s.onerror=()=>{$("msg").textContent="Google Maps couldn't load. Check your connection.";};document.head.appendChild(s);
+  const c=document.createElement("script");c.src="https://unpkg.com/@googlemaps/markerclusterer@2.5.3/dist/index.min.js";c.async=true;c.onload=()=>{if(map)draw(false);};document.head.appendChild(c);
+})();
+</script>
+</body>
+</html>
