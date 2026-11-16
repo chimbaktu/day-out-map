@@ -60,6 +60,12 @@ select.chip{appearance:none;padding-right:13px}
 .trip{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px 12px;box-shadow:0 2px 10px rgba(0,0,0,.12);max-width:760px;width:100%;justify-self:center;display:grid;gap:8px;max-height:42vh;overflow-y:auto}
 .trip .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .trip label{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.destbox{position:relative;flex:1 1 180px;min-width:0}
+.destbox input{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:7px 10px;width:100%}
+.sugg{position:absolute;left:0;right:0;top:100%;margin:4px 0 0;padding:4px;list-style:none;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 4px 16px rgba(0,0,0,.25);z-index:9;max-height:240px;overflow-y:auto}
+.sugg li{padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px;display:grid}
+.sugg li small{color:var(--muted)}
+.sugg li:hover,.sugg li.on{background:var(--chip)}
 .trip select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:6px 8px;min-width:0;flex:1 1 120px}
 .trip .hint{font-size:13.5px;color:var(--muted)}
 .stops{display:grid;gap:4px;margin:0;padding:0;list-style:none}
@@ -101,7 +107,7 @@ select.chip{appearance:none;padding-right:13px}
     </select>
   </div>
   <section class="trip" id="trip" hidden aria-label="Trip planner">
-    <div class="row"><label for="dest">Heading to</label><select id="dest"></select>
+    <div class="row"><label for="dest">Heading to</label><div class="destbox"><input id="dest" type="search" placeholder="Type a city, address or place" autocomplete="off" enterkeyhint="go"><ul class="sugg" id="sugg" hidden></ul></div>
       <label for="detour">Detour</label><select id="detour" style="flex:0 1 110px"><option value="5">5 mi</option><option value="15" selected>15 mi</option><option value="30">30 mi</option><option value="50">50 mi</option></select></div>
     <div class="hint" id="tripHint"></div>
     <ol class="stops" id="stops"></ol>
@@ -235,8 +241,7 @@ function gq(it){return it.p&&it.p.category==="oddity"?it.lat+","+it.lon:it.p?it.
 let routeLine=null,destMarker=null;
 function saveTrip(){try{localStorage.setItem("dayout-trip",JSON.stringify({dest:S.dest,stops:S.stops}));}catch(_){}}
 function setTrip(on){S.trip=on;$("tripBtn").setAttribute("aria-pressed",on);$("trip").hidden=!on;$("drive").hidden=on;}
-function fillDest(){const sel=$("dest");sel.innerHTML='<option value="">Pick a place…</option>'+(S.dest&&!CITIES.some(c=>c[0]===S.dest.name)?'<option value="pin" selected>'+esc(S.dest.name)+'</option>':'')+
-  CITIES.filter(c=>c[0]!=="Evansville, IN"||S.origin!==HOME).map(c=>'<option'+(S.dest&&S.dest.name===c[0]?' selected':'')+'>'+esc(c[0])+'</option>').join("");}
+function fillDest(){const el=$("dest");if(document.activeElement!==el)el.value=S.dest?S.dest.name:"";}
 function renderTrip(){if(!S.trip)return;fillDest();const st=tripStops(),H=$("tripHint"),L=$("stops");
   if(!S.dest){H.textContent="Pick where you're heading, or tap any pin and choose Head here. Then the map shows only stops near your route.";L.innerHTML="";$("tripActs").hidden=true;return;}
   const total=S.routeMi?S.routeMi/1.25:miles(S.origin,S.dest),n=ITEMS.filter(i=>!S.stops.includes(i.id)).length;
@@ -250,7 +255,36 @@ function drawRoute(){if(!map)return;if(routeLine){routeLine.setMap(null);routeLi
   routeLine=new google.maps.Polyline({map,path:pts,geodesic:true,strokeColor:"#1a73e8",strokeOpacity:.75,strokeWeight:4});
   destMarker=new google.maps.Marker({map,position:pts[pts.length-1],title:"Heading to "+S.dest.name,label:{text:"★",color:"#ffffff",fontSize:"13px"},icon:ICONS.t,zIndex:998});}
 $("tripBtn").onclick=()=>{setTrip(!S.trip);draw(true);findRoute();};
-$("dest").onchange=e=>{const v=e.target.value;if(v==="pin")return;const c=CITIES.find(x=>x[0]===v);S.dest=c?{name:c[0],lat:c[1],lon:c[2],q:c[0]}:null;saveTrip();S.path=null;draw(true);findRoute();};
+/* type-in destination: our own places and cities first, then Google place suggestions when the Places API is switched on */
+let sugTimer=null,sugSeq=0,sugList=[],placesLib=null,sessTok=null;
+function setDest(d){S.dest=d;S.stops=S.stops.filter(x=>x!==d.id);saveTrip();S.path=null;$("sugg").hidden=true;$("dest").value=d.name;$("dest").blur();draw(true);findRoute();}
+function localSug(q){const n=q.toLowerCase(),out=[];
+  CITIES.forEach(c=>{if(c[0].toLowerCase().includes(n))out.push({name:c[0],sub:"City",lat:c[1],lon:c[2],q:c[0]});});
+  PLACES.forEach(p=>{if(p.name.toLowerCase().includes(n))out.push({name:p.name,sub:p.city+", "+p.state,lat:p.lat,lon:p.lon,q:p.category==="oddity"?p.lat+","+p.lon:p.name+", "+p.city+", "+p.state,id:p.id});});
+  out.sort((a,b)=>(a.name.toLowerCase().startsWith(n)?0:1)-(b.name.toLowerCase().startsWith(n)?0:1));return out.slice(0,5);}
+async function remoteSug(q){if(!window.google||!google.maps)return [];
+  try{if(!placesLib)placesLib=await google.maps.importLibrary("places");const AS=placesLib.AutocompleteSuggestion;if(!AS)return [];
+    if(!sessTok)sessTok=new placesLib.AutocompleteSessionToken();
+    const r=await AS.fetchAutocompleteSuggestions({input:q,sessionToken:sessTok,includedRegionCodes:["us"],origin:{lat:S.origin.lat,lng:S.origin.lon}});
+    return (r.suggestions||[]).filter(x=>x.placePrediction).slice(0,5).map(x=>({name:x.placePrediction.mainText?x.placePrediction.mainText.text:x.placePrediction.text.text,sub:x.placePrediction.secondaryText?x.placePrediction.secondaryText.text:"",pred:x.placePrediction}));}
+  catch(_){return [];}}
+function showSug(list){sugList=list;const U=$("sugg");U.innerHTML=list.map((s,i)=>'<li data-i="'+i+'"><b>'+esc(s.name)+'</b>'+(s.sub?'<small>'+esc(s.sub)+'</small>':'')+'</li>').join("");U.hidden=!list.length;}
+async function pickSug(s){if(!s)return;
+  if(s.pred){try{const pl=s.pred.toPlace();await pl.fetchFields({fields:["location","displayName","formattedAddress"]});sessTok=null;
+      setDest({name:pl.displayName||s.name,lat:pl.location.lat(),lon:pl.location.lng(),q:pl.formattedAddress||s.name});return;}catch(_){toast("Couldn't look that place up.");return;}}
+  setDest({name:s.name,lat:s.lat,lon:s.lon,q:s.q,id:s.id});}
+$("dest").addEventListener("input",e=>{const q=e.target.value.trim();clearTimeout(sugTimer);if(q.length<2){$("sugg").hidden=true;return;}
+  const seq=++sugSeq,loc=localSug(q);showSug(loc);
+  sugTimer=setTimeout(async()=>{const rem=await remoteSug(q);if(seq!==sugSeq)return;const seen=new Set(loc.map(x=>x.name.toLowerCase()));showSug([...loc,...rem.filter(x=>!seen.has(x.name.toLowerCase()))].slice(0,8));},250);});
+$("dest").addEventListener("focus",e=>e.target.select());
+$("dest").addEventListener("keydown",async e=>{if(e.key!=="Enter")return;e.preventDefault();
+  if(sugList.length){pickSug(sugList[0]);return;}
+  const q=e.target.value.trim();if(!q)return;
+  try{const g=await new google.maps.Geocoder().geocode({address:q,region:"us"});const r=g.results&&g.results[0];
+    if(r){setDest({name:r.formatted_address.replace(/, USA$/,""),lat:r.geometry.location.lat(),lon:r.geometry.location.lng(),q:r.formatted_address});return;}}catch(_){}
+  toast("Couldn't find that place. Try a city name, or a spot from the map.");});
+$("sugg").addEventListener("pointerdown",e=>{const li=e.target.closest("li");if(!li)return;e.preventDefault();pickSug(sugList[+li.dataset.i]);});
+document.addEventListener("pointerdown",e=>{if(!e.target.closest(".destbox"))$("sugg").hidden=true;});
 $("detour").onchange=()=>draw(false);
 $("stops").onclick=e=>{const b=e.target.closest("[data-rm]");if(!b)return;S.stops=S.stops.filter(x=>x!==b.dataset.rm);saveTrip();draw(false);};
 $("tripClear").onclick=()=>{S.stops=[];saveTrip();draw(false);};
